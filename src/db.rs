@@ -5,6 +5,7 @@ pub struct Quiz {
     pub user_id: i64,
     pub konami_id: i64,
     pub card_name: String,
+    pub card_name_ruby: String,
     pub card_text: String,
 }
 
@@ -13,6 +14,7 @@ pub(crate) async fn new_quiz(
     user_id: &i64,
     konami_id: &i64,
     card_name: &String,
+    card_name_ruby: &String,
     card_text: &String,
 ) -> Result<String, sqlx::Error> {
     let mut tx = pool.begin().await?;
@@ -24,13 +26,14 @@ pub(crate) async fn new_quiz(
 
     sqlx::query(
         r#"
-      INSERT INTO ygo_quiz (user_id, konami_id, card_name, card_text)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO ygo_quiz (user_id, konami_id, card_name, card_name_ruby, card_text)
+      VALUES ($1, $2, $3, $4, $5)
     "#,
     )
     .bind(&user_id)
     .bind(&konami_id)
     .bind(&card_name)
+    .bind(&card_name_ruby)
     .bind(&card_text)
     .execute(&mut *tx)
     .await?;

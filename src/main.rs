@@ -68,17 +68,17 @@ impl Bot {
         let x = || {
             let document = scraper::Html::parse_document(&html);
             let name_selector = scraper::Selector::parse("#cardname h1").unwrap();
-            let cardname: String = document
+            let card_names = document
                 .select(&name_selector)
                 .next()
                 .unwrap()
                 .text()
-                .collect::<Vec<_>>()[2]
-                .trim()
-                .to_string();
+                .collect::<Vec<_>>();
+            let card_name: String = card_names[2].trim().to_string();
+            let card_name_ruby: String = card_names[1].trim().to_string();
             let text_selector =
                 scraper::Selector::parse("#CardTextSet:nth-child(2) .item_box_text").unwrap();
-            let cardtext: String = document
+            let card_text: String = document
                 .select(&text_selector)
                 .map(|t| t.inner_html())
                 .collect::<Vec<_>>()
@@ -98,19 +98,20 @@ impl Bot {
                 .collect::<Vec<_>>()
                 .join("\n")
                 .replace("<br>", "\n")
-                .replace(&cardname, "<カード名>")
+                .replace(&card_name, "<カード名>")
                 .to_string();
-            (cardname, cardtext)
+            (card_name, card_name_ruby, card_text)
         };
 
-        let (cardname, cardtext) = x();
+        let (card_name, card_name_ruby, card_text) = x();
 
         let content = match new_quiz(
             &self.database,
             &command.user.id.into(),
             &konami_id.as_i64().unwrap(),
-            &cardname,
-            &cardtext,
+            &card_name,
+            &card_name_ruby,
+            &card_text,
         )
         .await
         {
@@ -118,7 +119,7 @@ impl Bot {
                 info!("{}", msg);
                 format!(
                     "次のカードテキストを持つ遊戯王カードは？(`/ygoquiz ans` で回答)\n\n{}\n{}",
-                    cardtext,
+                    card_text,
                     card.get("card_images").unwrap().as_array().unwrap()[0]
                         .get("image_url_cropped")
                         .unwrap()
@@ -153,7 +154,7 @@ impl Bot {
         info!("Answered: {}", card_name);
         let content = match get_quiz(&self.database, &command.user.id.into()).await {
             Ok(quiz) => {
-                if quiz.card_name == card_name {
+                if quiz.card_name == card_name || quiz.card_name_ruby == card_name {
                     let _ = delete_quiz(&self.database, &command.user.id.into()).await;
 
                     format!("{}の回答：{}\n\n正解！ \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja",                        
@@ -192,7 +193,7 @@ impl Bot {
             Ok(quiz) => {
                 let _ = delete_quiz(&self.database, &command.user.id.into()).await;
 
-                format!("正解は「{}」でした \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja", quiz.card_name, quiz.konami_id)
+                format!("正解は「{}」（{}）でした \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja", quiz.card_name, quiz.card_name_ruby, quiz.konami_id)
             }
             Err(err) => format!(
                 "データベースでエラーが発生しました (`/ygoquiz new` は実行しましたか？) : {}",
