@@ -156,7 +156,7 @@ impl Bot {
                 if quiz.card_name == card_name {
                     let _ = delete_quiz(&self.database, &command.user.id.into()).await;
 
-                    format!("{}の回答：{}\n\n正解! \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja",                        
+                    format!("{}の回答：{}\n\n正解！ \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja",                        
                       command.user.mention(),
                       card_name,
                       quiz.konami_id
