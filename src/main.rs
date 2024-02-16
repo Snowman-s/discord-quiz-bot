@@ -1,3 +1,4 @@
+mod common;
 mod db;
 
 use core::panic;
@@ -17,6 +18,7 @@ use shuttle_serenity::SerenityService;
 use sqlx::{Executor, PgPool};
 use tracing::{error, info};
 
+use crate::common::roughly_card_name_equal;
 use crate::db::{delete_quiz, new_quiz};
 
 struct Bot {
@@ -154,7 +156,7 @@ impl Bot {
         info!("Answered: {}", card_name);
         let content = match get_quiz(&self.database, &command.user.id.into()).await {
             Ok(quiz) => {
-                if quiz.card_name == card_name || quiz.card_name_ruby == card_name {
+                if roughly_card_name_equal(card_name, &quiz.card_name, &quiz.card_name_ruby) {
                     let _ = delete_quiz(&self.database, &command.user.id.into()).await;
 
                     format!("{}の回答：{}\n\n正解！ \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja",                        
