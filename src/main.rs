@@ -1,8 +1,11 @@
 mod db;
 
+use core::panic;
+
 use anyhow::Context as _;
-use scraper::Html;
-use serenity::all::{CommandInteraction, Interaction};
+use db::get_quiz;
+use serde_json;
+use serenity::all::{CommandDataOptionValue, CommandInteraction, Interaction};
 use serenity::builder::{
     CreateCommand, CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage,
 };
@@ -14,7 +17,7 @@ use shuttle_serenity::SerenityService;
 use sqlx::{Executor, PgPool};
 use tracing::{error, info};
 
-use crate::db::new_quiz;
+use crate::db::{delete_quiz, new_quiz};
 
 struct Bot {
     database: PgPool,
@@ -32,7 +35,7 @@ impl Bot {
                 .unwrap(),
         )
         .unwrap();
-        let card: serde_json::Value = serde_json::from_str(
+        let card: serde_json::Value = serde_json::from_str::<serde_json::Value>(
             &reqwest::get(format!(
                 "https://db.ygoprodeck.com/api/v7/cardinfo.php?misc=yes&id={}",
                 card.get("id").unwrap()
@@ -43,20 +46,22 @@ impl Bot {
             .await
             .unwrap(),
         )
-        .unwrap();
-        let konami_id = card.get("data").unwrap().as_array().unwrap()[0]
-            .get("misc_info")
-            .unwrap()
-            .as_array()
-            .unwrap()[0]
+        .unwrap()
+        .get("data")
+        .unwrap()
+        .as_array()
+        .unwrap()[0]
+            .clone();
+        let konami_id = card.get("misc_info").unwrap().as_array().unwrap()[0]
             .get("konami_id")
             .unwrap();
-        println!("konami_id = {}", konami_id);
+        info!("konami_id = {}", konami_id);
         let url = format!(
-      "https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja",
-      konami_id
-    );
-        println!("konami_db_url = {}", url);
+          "https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja",
+          konami_id
+        );
+
+        info!("konami_db_url = {}", url);
         let html = reqwest::get(url).await.unwrap().text().await.unwrap();
 
         //https://github.com/causal-agent/scraper/issues/75
@@ -109,11 +114,19 @@ impl Bot {
         .await
         {
             Ok(msg) => {
-                println!("{}", msg);
-                format!("次のカードテキストを持つ遊戯王カードは？\n\n{}", cardtext)
+                info!("{}", msg);
+                format!(
+                    "次のカードテキストを持つ遊戯王カードは？(`/ygoquiz ans` で回答)\n\n{}\n{}",
+                    cardtext,
+                    card.get("card_images").unwrap().as_array().unwrap()[0]
+                        .get("image_url_cropped")
+                        .unwrap()
+                        .as_str()
+                        .unwrap()
+                )
             }
             Err(err) => {
-                eprintln!("{}", err);
+                error!("{}", err);
                 format!("データベースでエラーが発生しました：{}", err)
             }
         };
@@ -128,17 +141,105 @@ impl Bot {
             .await
             .unwrap();
     }
+
+    async fn command_ans(&self, ctx: &Context, command: &CommandInteraction) {
+        let CommandDataOptionValue::SubCommand(subopt) = &command.data.options[0].value else {
+            //unreachable
+            panic!()
+        };
+        let card_name = subopt[0].value.as_str().unwrap();
+
+        info!("Answered: {}", card_name);
+        let content = match get_quiz(&self.database, &command.user.id.into()).await {
+            Ok(quiz) => {
+                if quiz.card_name == card_name {
+                    let _ = delete_quiz(&self.database, &command.user.id.into()).await;
+
+                    format!("正解! \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja", quiz.konami_id)
+                } else {
+                    "不正解...".to_string()
+                }
+            }
+            Err(err) => format!(
+                "データベースでエラーが発生しました (`/ygoquiz new` は実行しましたか？) : {}",
+                err.to_string()
+            ),
+        };
+
+        command
+            .create_response(
+                &ctx.http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().content(content),
+                ),
+            )
+            .await
+            .unwrap();
+    }
+
+    async fn command_giveup(&self, ctx: &Context, command: &CommandInteraction) {
+        info!("Giveup: {}", command.user);
+        let content = match get_quiz(&self.database, &command.user.id.into()).await {
+            Ok(quiz) => {
+                let _ = delete_quiz(&self.database, &command.user.id.into()).await;
+
+                format!("正解は「{}」でした \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja", quiz.card_name, quiz.konami_id)
+            }
+            Err(err) => format!(
+                "データベースでエラーが発生しました (`/ygoquiz new` は実行しましたか？) : {}",
+                err.to_string()
+            ),
+        };
+
+        command
+            .create_response(
+                &ctx.http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().content(content),
+                ),
+            )
+            .await
+            .unwrap();
+    }
+
+    async fn command_help(&self, ctx: &Context, command: &CommandInteraction) {
+        command
+            .create_response(
+                &ctx.http,
+                CreateInteractionResponse::Message(
+                    CreateInteractionResponseMessage::new().content(
+                      "Help:\n".to_owned()+
+                      "遊戯王カードのカードテキストを出し、カードテキストから名前を当てる遊びです。\n"+
+                      "ユーザーごとに別の問題に取り組むことができます。\n\n"+
+                      "Commands:\n"+
+                      "- `/ygoquiz new` - 開始\n"+
+                      "- `/ygoquiz ans <card_name>` - 回答\n"+
+                      "- `/ygoquiz giveup` - 問題を諦める\n"+
+                      "- `/ygoquiz help` - このヘルプを表示\n"  
+                    ),
+                ),
+            )
+            .await
+            .unwrap();
+    }
 }
 
 #[async_trait]
 impl EventHandler for Bot {
     async fn interaction_create(&self, ctx: Context, interaction: Interaction) {
         if let Interaction::Command(command) = interaction {
-            info!("Received command interaction: {:#?}", command);
+            if command.user.bot {
+                return;
+            }
+
+            info!("Received command interaction: {:#?}", command.data.options);
 
             match command.data.name.as_str() {
                 "ygoquiz" => match command.data.options[0].name.as_str() {
                     "new" => self.command_new(&ctx, &command).await,
+                    "ans" => self.command_ans(&ctx, &command).await,
+                    "giveup" => self.command_giveup(&ctx, &command).await,
+                    "help" => self.command_help(&ctx, &command).await,
                     _ => {}
                 },
                 _ => {}
@@ -160,6 +261,31 @@ impl EventHandler for Bot {
                         serenity::all::CommandOptionType::SubCommand,
                         "new",
                         "Start Yu-gi-oh! quiz",
+                    ))
+                    .add_option(
+                        CreateCommandOption::new(
+                            serenity::all::CommandOptionType::SubCommand,
+                            "ans",
+                            "Answer to Yu-gi-oh! quiz",
+                        )
+                        .add_sub_option(
+                            CreateCommandOption::new(
+                                serenity::all::CommandOptionType::String,
+                                "card_name",
+                                "The card name",
+                            )
+                            .required(true),
+                        ),
+                    )
+                    .add_option(CreateCommandOption::new(
+                        serenity::all::CommandOptionType::SubCommand,
+                        "giveup",
+                        "Giveup Yu-gi-oh! quiz",
+                    ))
+                    .add_option(CreateCommandOption::new(
+                        serenity::all::CommandOptionType::SubCommand,
+                        "help",
+                        "Help about Yu-gi-oh! quiz bot",
                     ))],
             )
             .await

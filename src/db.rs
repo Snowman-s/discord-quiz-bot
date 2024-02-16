@@ -1,10 +1,9 @@
 use sqlx::{FromRow, PgPool};
-use std::fmt::Write;
 
 #[derive(FromRow)]
-struct Quiz {
-    pub user_id: i32,
-    pub konami_id: i32,
+pub struct Quiz {
+    pub user_id: i64,
+    pub konami_id: i64,
     pub card_name: String,
     pub card_text: String,
 }
@@ -42,4 +41,22 @@ pub(crate) async fn new_quiz(
         "Start quiz about `{}` for `{}`",
         card_name, user_id
     ))
+}
+
+pub(crate) async fn get_quiz(pool: &PgPool, user_id: &i64) -> Result<Quiz, sqlx::Error> {
+    let data: Quiz = sqlx::query_as(r#"SELECT * FROM ygo_quiz WHERE user_id = $1"#)
+        .bind(user_id)
+        .fetch_one(pool)
+        .await?;
+
+    Ok(data)
+}
+
+pub(crate) async fn delete_quiz(pool: &PgPool, user_id: &i64) -> Result<String, sqlx::Error> {
+    sqlx::query(r#"DELETE FROM ygo_quiz WHERE user_id = $1"#)
+        .bind(user_id)
+        .execute(pool)
+        .await?;
+
+    Ok(format!("Delete quiz about for `{}`", user_id))
 }
