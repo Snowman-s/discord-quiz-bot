@@ -98,6 +98,7 @@ impl Bot {
                 .collect::<Vec<_>>()
                 .join("\n")
                 .replace("<br>", "\n")
+                .replace(&cardname, "<カード名>")
                 .to_string();
             (cardname, cardtext)
         };
