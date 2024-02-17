@@ -29,8 +29,7 @@ pub(crate) fn roughly_card_name_equal(
                             continue;
                         }
                     }
-                    error!("{:?} cannot applicatable for {} (=>{})", i_opt, t, cmp);
-                    return false;
+                    info!("{:?} cannot applicatable for {} (=>{})", i_opt, t, cmp);
                 }
                 '0'..='9' => {
                     let diff = (t as u32) - ('0' as u32);
@@ -41,8 +40,7 @@ pub(crate) fn roughly_card_name_equal(
                             continue;
                         }
                     }
-                    error!("{:?} cannot applicatable for {} (=>{})", i_opt, t, cmp);
-                    return false;
+                    info!("{:?} cannot applicatable for {} (=>{})", i_opt, t, cmp);
                 }
                 'ァ'..='ン' => {
                     let cmp = char::from_u32((t as u32) - ('ァ' as u32) + ('ぁ' as u32)).unwrap();
@@ -52,14 +50,13 @@ pub(crate) fn roughly_card_name_equal(
                             continue;
                         }
                     }
-                    error!(
+                    info!(
                         "{:?} cannot applicatable for {} (=> {} ({}))",
                         i_opt,
                         t,
                         cmp,
                         (t as u32) - ('ァ' as u32) + ('ぁ' as u32)
                     );
-                    return false;
                 }
                 ' ' | '　' => {
                     if let Some(i) = i_opt {
