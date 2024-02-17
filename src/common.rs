@@ -82,17 +82,16 @@ pub(crate) fn roughly_card_name_equal(
                     }
                     continue;
                 }
-                _ => {
-                    if let Some(i) = i_opt {
-                        if i == &t {
-                            i_index += 1;
-                            continue;
-                        }
-                    }
-                    error!("{:?} cannot applicatable for {}", i_opt, t);
-                    return false;
+                _ => {}
+            }
+            if let Some(i) = i_opt {
+                if i == &t {
+                    i_index += 1;
+                    continue;
                 }
             }
+            error!("{:?} cannot applicatable for {}", i_opt, t);
+            return false;
         }
 
         // icharsの最後の方の空白を送る
