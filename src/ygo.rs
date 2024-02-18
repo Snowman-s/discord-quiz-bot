@@ -1,3 +1,5 @@
+mod db;
+
 use serenity::{
     all::{CommandDataOptionValue, CommandInteraction, Mentionable},
     builder::{
@@ -8,10 +10,10 @@ use serenity::{
 };
 use tracing::{error, info};
 
-use crate::{db::get_quiz, Bot};
+use crate::Bot;
 
 use crate::common::roughly_card_name_equal;
-use crate::db::{delete_quiz, new_quiz};
+use crate::ygo::db::{delete_quiz, get_quiz, new_quiz};
 
 pub(crate) fn create_command(c: CreateCommand) -> CreateCommand {
     c.description("Communicate with Yu-gi-oh! quiz bot")

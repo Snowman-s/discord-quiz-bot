@@ -1,5 +1,5 @@
 mod common;
-mod db;
+mod mtg;
 mod ygo;
 
 use anyhow::Context as _;
@@ -30,6 +30,7 @@ impl EventHandler for Bot {
 
             match command.data.name.as_str() {
                 "ygoquiz" => ygo::receive_command(&self, &ctx, command).await,
+                "mtgquiz" => mtg::receive_command(&self, &ctx, command).await,
                 _ => {}
             };
         }
@@ -43,7 +44,10 @@ impl EventHandler for Bot {
         let commands = guild_id
             .set_commands(
                 &ctx.http,
-                vec![ygo::create_command(CreateCommand::new("ygoquiz"))],
+                vec![
+                    ygo::create_command(CreateCommand::new("ygoquiz")),
+                    mtg::create_command(CreateCommand::new("mtgquiz")),
+                ],
             )
             .await
             .unwrap();
