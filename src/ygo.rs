@@ -1,11 +1,8 @@
 mod db;
 
 use serenity::{
-    all::{CommandDataOptionValue, CommandInteraction, Mentionable},
-    builder::{
-        CreateCommand, CreateCommandOption, CreateInteractionResponse,
-        CreateInteractionResponseMessage,
-    },
+    all::{CommandDataOptionValue, CommandInteraction, EditInteractionResponse, Mentionable},
+    builder::{CreateCommand, CreateCommandOption},
     client::Context,
 };
 use tracing::{error, info};
@@ -50,6 +47,8 @@ pub(crate) fn create_command(c: CreateCommand) -> CreateCommand {
 }
 
 pub(crate) async fn receive_command(bot: &Bot, ctx: &Context, command: CommandInteraction) {
+    command.defer(&ctx.http).await.unwrap();
+
     let subc = command.data.options[0].name.as_str();
     let result = match subc {
         "new" => command_new(&bot, &ctx, &command).await,
@@ -67,15 +66,15 @@ pub(crate) async fn receive_command(bot: &Bot, ctx: &Context, command: CommandIn
         }
     };
 
-    command
-        .create_response(
-            &ctx.http,
-            CreateInteractionResponse::Message(
-                CreateInteractionResponseMessage::new().content(msg),
-            ),
-        )
+    match command
+        .edit_response(&ctx.http, EditInteractionResponse::new().content(msg))
         .await
-        .unwrap();
+    {
+        Ok(_) => {}
+        Err(err) => {
+            error!("{}", err)
+        }
+    }
 }
 
 async fn command_new(
@@ -92,6 +91,7 @@ async fn command_new(
             .map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?;
+    info!("id (not konami_id) = {:?}", card.get("id"));
     let card: serde_json::Value = serde_json::from_str::<serde_json::Value>(
         &reqwest::get(format!(
             "https://db.ygoprodeck.com/api/v7/cardinfo.php?misc=yes&id={}",
@@ -194,9 +194,10 @@ async fn command_new(
                 "次のカードテキストを持つ遊戯王カードは？(`/ygoquiz ans` で回答)\n\n{}\n{}",
                 card_text,
                 card.get("card_images")
-                    .and_then(|c| c
-                        .as_array()
-                        .and_then(|c| c[0].get("image_url_cropped").and_then(|c| c.as_str())))
+                    .and_then(|c| c.as_array())
+                    .and_then(|c| c.get(0))
+                    .and_then(|c| c.get("image_url_cropped"))
+                    .and_then(|c| c.as_str())
                     .unwrap_or("")
             )
         }
@@ -206,6 +207,7 @@ async fn command_new(
         }
     };
 
+    info!(content);
     Ok(content)
 }
 
