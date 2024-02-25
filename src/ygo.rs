@@ -1,8 +1,8 @@
-mod db;
+pub mod db;
 
 use serenity::{
     all::{CommandDataOptionValue, CommandInteraction, EditInteractionResponse, Mentionable},
-    builder::{CreateCommand, CreateCommandOption},
+    builder::CreateCommandOption,
     client::Context,
 };
 use tracing::{error, info};
@@ -10,51 +10,28 @@ use tracing::{error, info};
 use crate::Bot;
 
 use crate::common::roughly_card_name_equal;
-use crate::ygo::db::{delete_quiz, get_quiz, new_quiz};
+use crate::ygo::db::{get_quiz, new_quiz};
 
-pub(crate) fn create_command(c: CreateCommand) -> CreateCommand {
+pub(crate) fn create_subcommand(c: CreateCommandOption) -> CreateCommandOption {
     c.description("Communicate with Yu-gi-oh! quiz bot")
-        .add_option(CreateCommandOption::new(
+        .add_sub_option(CreateCommandOption::new(
             serenity::all::CommandOptionType::SubCommand,
             "new",
             "Start Yu-gi-oh! quiz",
-        ))
-        .add_option(
-            CreateCommandOption::new(
-                serenity::all::CommandOptionType::SubCommand,
-                "ans",
-                "Answer to Yu-gi-oh! quiz",
-            )
-            .add_sub_option(
-                CreateCommandOption::new(
-                    serenity::all::CommandOptionType::String,
-                    "card_name",
-                    "The card name",
-                )
-                .required(true),
-            ),
-        )
-        .add_option(CreateCommandOption::new(
-            serenity::all::CommandOptionType::SubCommand,
-            "giveup",
-            "Giveup Yu-gi-oh! quiz",
-        ))
-        .add_option(CreateCommandOption::new(
-            serenity::all::CommandOptionType::SubCommand,
-            "help",
-            "Help about Yu-gi-oh! quiz bot",
         ))
 }
 
 pub(crate) async fn receive_command(bot: &Bot, ctx: &Context, command: CommandInteraction) {
     command.defer(&ctx.http).await.unwrap();
 
-    let subc = command.data.options[0].name.as_str();
+    let CommandDataOptionValue::SubCommandGroup(after_ygo) = &command.data.options[0].value else {
+        //unreachable
+        panic!()
+    };
+
+    let subc = after_ygo[0].name.as_str();
     let result = match subc {
         "new" => command_new(&bot, &ctx, &command).await,
-        "ans" => command_ans(&bot, &ctx, &command).await,
-        "giveup" => command_giveup(&bot, &ctx, &command).await,
-        "help" => command_help(&bot, &ctx, &command).await,
         _ => Err(format!("Unknown Command: {}", subc)),
     };
 
@@ -211,7 +188,7 @@ async fn command_new(
     Ok(content)
 }
 
-async fn command_ans(
+pub async fn command_ans(
     bot: &Bot,
     _: &Context,
     command: &CommandInteraction,
@@ -226,7 +203,7 @@ async fn command_ans(
     let content = match get_quiz(&bot.database, &command.user.id.into()).await {
         Ok(quiz) => {
             if roughly_card_name_equal(card_name, &quiz.card_name, &quiz.card_name_ruby) {
-                let _ = delete_quiz(&bot.database, &command.user.id.into()).await;
+                let _ = crate::db::delete_quiz(&bot.database, &command.user.id.into()).await;
 
                 format!("{}の回答：{}\n\n正解！ \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja",                        
                 command.user.mention(),
@@ -250,7 +227,7 @@ async fn command_ans(
     Ok(content)
 }
 
-async fn command_giveup(
+pub async fn command_giveup(
     bot: &Bot,
     _: &Context,
     command: &CommandInteraction,
@@ -258,7 +235,7 @@ async fn command_giveup(
     info!("Giveup: {}", command.user);
     let content = match get_quiz(&bot.database, &command.user.id.into()).await {
         Ok(quiz) => {
-            let _ = delete_quiz(&bot.database, &command.user.id.into()).await;
+            let _ = crate::db::delete_quiz(&bot.database, &command.user.id.into()).await;
 
             format!("正解は「{}」（{}）でした \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja", quiz.card_name, quiz.card_name_ruby, quiz.konami_id)
         }
@@ -269,15 +246,4 @@ async fn command_giveup(
     };
 
     Ok(content)
-}
-
-async fn command_help(_: &Bot, _: &Context, _: &CommandInteraction) -> Result<String, String> {
-    Ok("Help:\n".to_owned()
-        + "遊戯王カードのカードテキストを出し、カードテキストから名前を当てる遊びです。\n"
-        + "ユーザーごとに別の問題に取り組むことができます。\n\n"
-        + "Commands:\n"
-        + "- `/ygoquiz new` - 開始\n"
-        + "- `/ygoquiz ans <card_name>` - 回答\n"
-        + "- `/ygoquiz giveup` - 問題を諦める\n"
-        + "- `/ygoquiz help` - このヘルプを表示\n")
 }

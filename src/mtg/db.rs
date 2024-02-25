@@ -1,4 +1,6 @@
-use sqlx::{FromRow, PgPool};
+use sqlx::{FromRow, PgConnection, PgPool};
+
+use crate::db::insert_quiz;
 
 #[derive(FromRow)]
 pub struct Quiz {
@@ -19,10 +21,7 @@ pub(crate) async fn new_quiz(
 ) -> Result<String, sqlx::Error> {
     let mut tx = pool.begin().await?;
 
-    sqlx::query(r#"DELETE FROM mtg_quiz WHERE user_id = $1"#)
-        .bind(user_id)
-        .execute(&mut *tx)
-        .await?;
+    crate::db::delete_tx_quiz(&mut tx, user_id).await?;
 
     sqlx::query(
         r#"
@@ -37,6 +36,8 @@ pub(crate) async fn new_quiz(
     .bind(&card_text)
     .execute(&mut *tx)
     .await?;
+
+    insert_quiz(&mut tx, user_id, &crate::db::QuizType::Mtg).await?;
 
     tx.commit().await?;
 
@@ -55,11 +56,11 @@ pub(crate) async fn get_quiz(pool: &PgPool, user_id: &i64) -> Result<Quiz, sqlx:
     Ok(data)
 }
 
-pub(crate) async fn delete_quiz(pool: &PgPool, user_id: &i64) -> Result<String, sqlx::Error> {
+pub(crate) async fn delete_quiz(pool: &mut PgConnection, user_id: &i64) -> Result<(), sqlx::Error> {
     sqlx::query(r#"DELETE FROM mtg_quiz WHERE user_id = $1"#)
         .bind(user_id)
         .execute(pool)
         .await?;
 
-    Ok(format!("Delete quiz about for `{}`", user_id))
+    Ok(())
 }

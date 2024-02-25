@@ -1,13 +1,10 @@
-mod db;
+pub mod db;
 
 use reqwest::Client;
 use serde_json::json;
 use serenity::{
-    all::{CommandDataOptionValue, CommandInteraction, Mentionable},
-    builder::{
-        CreateCommand, CreateCommandOption, CreateInteractionResponse,
-        CreateInteractionResponseMessage,
-    },
+    all::{CommandDataOption, CommandDataOptionValue, CommandInteraction, Mentionable},
+    builder::{CreateCommandOption, CreateInteractionResponse, CreateInteractionResponseMessage},
     client::Context,
 };
 use tracing::{error, info};
@@ -15,11 +12,11 @@ use tracing::{error, info};
 use crate::Bot;
 
 use crate::common::roughly_card_name_equal;
-use crate::mtg::db::{delete_quiz, get_quiz, new_quiz};
+use crate::mtg::db::{get_quiz, new_quiz};
 
-pub(crate) fn create_command(c: CreateCommand) -> CreateCommand {
+pub(crate) fn create_subcommand(c: CreateCommandOption) -> CreateCommandOption {
     c.description("Communicate with Magic:the Gathering! quiz bot")
-        .add_option(
+        .add_sub_option(
             CreateCommandOption::new(
                 serenity::all::CommandOptionType::SubCommand,
                 "new",
@@ -38,41 +35,18 @@ pub(crate) fn create_command(c: CreateCommand) -> CreateCommand {
                 .required(true),
             ),
         )
-        .add_option(
-            CreateCommandOption::new(
-                serenity::all::CommandOptionType::SubCommand,
-                "ans",
-                "Answer to Magic:the Gathering quiz",
-            )
-            .add_sub_option(
-                CreateCommandOption::new(
-                    serenity::all::CommandOptionType::String,
-                    "card_name",
-                    "The card name",
-                )
-                .required(true),
-            ),
-        )
-        .add_option(CreateCommandOption::new(
-            serenity::all::CommandOptionType::SubCommand,
-            "giveup",
-            "Giveup Magic:the Gathering quiz",
-        ))
-        .add_option(CreateCommandOption::new(
-            serenity::all::CommandOptionType::SubCommand,
-            "help",
-            "Help about Magic:the Gathering quiz bot",
-        ))
 }
 
 pub(crate) async fn receive_command(bot: &Bot, ctx: &Context, command: CommandInteraction) {
-    let subc = command.data.options[0].name.as_str();
+    let CommandDataOptionValue::SubCommandGroup(after_mtg) = &command.data.options[0].value else {
+        //unreachable
+        panic!()
+    };
+    let subc = after_mtg[0].name.as_str();
+
     info!(subc);
     let result = match subc {
-        "new" => command_new(&bot, &ctx, &command).await,
-        "ans" => command_ans(&bot, &ctx, &command).await,
-        "giveup" => command_giveup(&bot, &ctx, &command).await,
-        "help" => command_help(&bot, &ctx, &command).await,
+        "new" => command_new(&bot, &ctx, &command, &after_mtg[0]).await,
         _ => Err(format!("Unknown Command: {}", subc)),
     };
 
@@ -99,8 +73,9 @@ async fn command_new(
     bot: &Bot,
     _: &Context,
     command: &CommandInteraction,
+    command_data_option: &CommandDataOption,
 ) -> Result<String, String> {
-    let CommandDataOptionValue::SubCommand(subopt) = &command.data.options[0].value else {
+    let CommandDataOptionValue::SubCommand(subopt) = &command_data_option.value else {
         //unreachable
         panic!()
     };
@@ -180,7 +155,7 @@ async fn command_new(
     Ok(content)
 }
 
-async fn command_ans(
+pub async fn command_ans(
     bot: &Bot,
     _: &Context,
     command: &CommandInteraction,
@@ -195,7 +170,7 @@ async fn command_ans(
     let content = match get_quiz(&bot.database, &command.user.id.into()).await {
         Ok(quiz) => {
             if roughly_card_name_equal(card_name, &quiz.card_name, &quiz.english_name) {
-                let _ = delete_quiz(&bot.database, &command.user.id.into()).await;
+                let _ = crate::db::delete_quiz(&bot.database, &command.user.id.into()).await;
 
                 format!(
                     "{}の回答：{}\n\n正解！ \n {}",
@@ -220,7 +195,7 @@ async fn command_ans(
     Ok(content)
 }
 
-async fn command_giveup(
+pub async fn command_giveup(
     bot: &Bot,
     _: &Context,
     command: &CommandInteraction,
@@ -228,7 +203,7 @@ async fn command_giveup(
     info!("Giveup: {}", command.user);
     let content = match get_quiz(&bot.database, &command.user.id.into()).await {
         Ok(quiz) => {
-            let _ = delete_quiz(&bot.database, &command.user.id.into()).await;
+            let _ = crate::db::delete_quiz(&bot.database, &command.user.id.into()).await;
 
             format!(
                 "正解は「{}」（{}）でした \n {}",
@@ -242,8 +217,4 @@ async fn command_giveup(
     };
 
     Ok(content)
-}
-
-async fn command_help(_: &Bot, _: &Context, _: &CommandInteraction) -> Result<String, String> {
-    Ok("".to_string())
 }
