@@ -168,7 +168,7 @@ async fn command_new(
         Ok(msg) => {
             info!("{}", msg);
             format!(
-                "次のカードテキストを持つ遊戯王カードは？(`/ygoquiz ans` で回答)\n\n{}\n{}",
+                "次のカードテキストを持つ遊戯王カードは？(`/quiz ans` で回答)\n\n{}\n{}",
                 card_text,
                 card.get("card_images")
                     .and_then(|c| c.as_array())
@@ -219,7 +219,7 @@ pub async fn command_ans(
             }
         }
         Err(err) => format!(
-            "データベースでエラーが発生しました (`/ygoquiz new` は実行しましたか？) : {}",
+            "データベースでエラーが発生しました (`/quiz ygo new` は実行しましたか？) : {}",
             err.to_string()
         ),
     };
@@ -240,7 +240,7 @@ pub async fn command_giveup(
             format!("正解は「{}」（{}）でした \n https://www.db.yugioh-card.com/yugiohdb/card_search.action?ope=2&cid={}&request_locale=ja", quiz.card_name, quiz.card_name_ruby, quiz.konami_id)
         }
         Err(err) => format!(
-            "データベースでエラーが発生しました (`/ygoquiz new` は実行しましたか？) : {}",
+            "データベースでエラーが発生しました (`/quiz new` は実行しましたか？) : {}",
             err.to_string()
         ),
     };

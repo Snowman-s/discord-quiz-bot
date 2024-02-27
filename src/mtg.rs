@@ -142,7 +142,7 @@ async fn command_new(
         Ok(msg) => {
             info!("{}", msg);
             format!(
-                "次のカードテキストを持つ Magic のカードは？(`/mtgquiz ans` で回答)\n\n{}\n{}",
+                "次のカードテキストを持つ Magic のカードは？(`/quiz ans` で回答)\n\n{}\n{}",
                 card_text, image_uri
             )
         }
@@ -187,7 +187,7 @@ pub async fn command_ans(
             }
         }
         Err(err) => format!(
-            "データベースでエラーが発生しました (`/mtgquiz new` は実行しましたか？) : {}",
+            "データベースでエラーが発生しました (`/quiz new` は実行しましたか？) : {}",
             err.to_string()
         ),
     };
@@ -211,7 +211,7 @@ pub async fn command_giveup(
             )
         }
         Err(err) => format!(
-            "データベースでエラーが発生しました (`/ygoquiz new` は実行しましたか？) : {}",
+            "データベースでエラーが発生しました (`/quiz mtg new` は実行しましたか？) : {}",
             err.to_string()
         ),
     };
