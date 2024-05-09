@@ -13,7 +13,7 @@ use serenity::builder::CreateCommand;
 use serenity::model::gateway::Ready;
 use serenity::prelude::*;
 use serenity::{all::GuildId, async_trait};
-use shuttle_secrets::SecretStore;
+use shuttle_runtime::SecretStore;
 use shuttle_serenity::SerenityService;
 use sqlx::{Executor, PgPool};
 use tracing::{error, info};
@@ -168,7 +168,7 @@ impl EventHandler for Bot {
 #[shuttle_runtime::main]
 async fn serenity(
     #[shuttle_shared_db::Postgres] pool: PgPool,
-    #[shuttle_secrets::Secrets] secret_store: SecretStore,
+    #[shuttle_runtime::Secrets] secret_store: SecretStore,
 ) -> shuttle_serenity::ShuttleSerenity {
     // Get the discord token set in `Secrets.toml
     let token = secret_store
