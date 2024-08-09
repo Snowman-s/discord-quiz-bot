@@ -94,6 +94,8 @@ async fn command_new(
     let card: serde_json::Value = serde_json::from_str(
         &client
             .get("https://api.scryfall.com/cards/random")
+            .header("Accept", "application/json")
+            .header("User-Agent", "ygo-quiz-bot/1.0")
             .query(&json!({
               "q": query
             }))
