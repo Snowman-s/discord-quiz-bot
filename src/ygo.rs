@@ -59,21 +59,10 @@ async fn command_new(
     _: &Context,
     command: &CommandInteraction,
 ) -> Result<String, String> {
-    let card: serde_json::Value = serde_json::from_str(
-        &reqwest::get("https://db.ygoprodeck.com/api/v7/randomcard.php")
-            .await
-            .map_err(|e| e.to_string())?
-            .text()
-            .await
-            .map_err(|e| e.to_string())?,
-    )
-    .map_err(|e| e.to_string())?;
-    info!("id (not konami_id) = {:?}", card.get("id"));
     let card: serde_json::Value = serde_json::from_str::<serde_json::Value>(
-        &reqwest::get(format!(
-            "https://db.ygoprodeck.com/api/v7/cardinfo.php?misc=yes&id={}",
-            card.get("id").ok_or("API 応答の解析失敗")?
-        ))
+        &reqwest::get(
+            "https://db.ygoprodeck.com/api/v7/cardinfo.php?num=1&offset=0&sort=random&cachebust&misc=yes",
+        )
         .await
         .map_err(|e| e.to_string())?
         .text()
