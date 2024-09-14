@@ -1,9 +1,13 @@
 pub mod db;
 
 use serenity::{
-    all::{CommandDataOptionValue, CommandInteraction, EditInteractionResponse, Mentionable},
+    all::{
+        CommandDataOptionValue, CommandInteraction, CreateAttachment,
+        CreateInteractionResponseFollowup, EditInteractionResponse, Mentionable,
+    },
     builder::CreateCommandOption,
     client::Context,
+    futures::TryFutureExt,
 };
 use tracing::{error, info};
 
@@ -31,25 +35,39 @@ pub(crate) async fn receive_command(bot: &Bot, ctx: &Context, command: CommandIn
 
     let subc = after_ygo[0].name.as_str();
     let result = match subc {
-        "new" => command_new(&bot, &ctx, &command).await,
+        "new" => command_new(bot, ctx, &command).await,
         _ => Err(format!("Unknown Command: {}", subc)),
     };
 
-    let msg = match result {
-        Ok(msg) => msg,
+    match result {
+        Ok((msg, attachments)) => {
+            match command
+                .edit_response(&ctx.http, EditInteractionResponse::new().content(msg))
+                .and_then(|_msg| {
+                    command.create_followup(
+                        &ctx.http,
+                        CreateInteractionResponseFollowup::new().files(attachments),
+                    )
+                })
+                .await
+            {
+                Ok(_) => {}
+                Err(err) => {
+                    error!("{}", err)
+                }
+            }
+        }
         Err(msg) => {
             error!(msg);
-            msg
-        }
-    };
-
-    match command
-        .edit_response(&ctx.http, EditInteractionResponse::new().content(msg))
-        .await
-    {
-        Ok(_) => {}
-        Err(err) => {
-            error!("{}", err)
+            match command
+                .edit_response(&ctx.http, EditInteractionResponse::new().content(msg))
+                .await
+            {
+                Ok(_) => {}
+                Err(err) => {
+                    error!("{}", err)
+                }
+            }
         }
     }
 }
@@ -58,7 +76,7 @@ async fn command_new(
     bot: &Bot,
     _: &Context,
     command: &CommandInteraction,
-) -> Result<String, String> {
+) -> Result<(String, Vec<CreateAttachment>), String> {
     let card: serde_json::Value = serde_json::from_str::<serde_json::Value>(
         &reqwest::get(
             "https://db.ygoprodeck.com/api/v7/cardinfo.php?num=1&offset=0&sort=random&cachebust&misc=yes",
@@ -122,7 +140,7 @@ async fn command_new(
             .map(|t| t.inner_html())
             .collect::<Vec<_>>()
             .join("")
-            .split("\n")
+            .split('\n')
             .filter_map(|card_line: &str| {
                 if card_line.contains("<div class=\"text_title\">") {
                     None
@@ -144,6 +162,18 @@ async fn command_new(
 
     let (card_name, card_name_ruby, card_text) = x()?;
 
+    let response = reqwest::get(
+        card.get("card_images")
+            .and_then(|c| c.as_array())
+            .and_then(|c| c.first())
+            .and_then(|c| c.get("image_url_cropped"))
+            .and_then(|c| c.as_str())
+            .unwrap_or(""),
+    )
+    .await
+    .map_err(|_err| "画像取得エラー")?;
+    let img_bytes = response.bytes().await.unwrap();
+
     let content = match new_quiz(
         &bot.database,
         &command.user.id.into(),
@@ -157,14 +187,8 @@ async fn command_new(
         Ok(msg) => {
             info!("{}", msg);
             format!(
-                "次のカードテキストを持つ遊戯王カードは？(`/quiz ans` で回答)\n\n{}\n{}",
-                card_text,
-                card.get("card_images")
-                    .and_then(|c| c.as_array())
-                    .and_then(|c| c.get(0))
-                    .and_then(|c| c.get("image_url_cropped"))
-                    .and_then(|c| c.as_str())
-                    .unwrap_or("")
+                "次のカードテキストを持つ遊戯王カードは？(`/quiz ans` で回答)\n\n{}",
+                card_text
             )
         }
         Err(err) => {
@@ -174,7 +198,10 @@ async fn command_new(
     };
 
     info!(content);
-    Ok(content)
+    Ok((
+        content,
+        vec![CreateAttachment::bytes(img_bytes, "image.jpg")],
+    ))
 }
 
 pub async fn command_ans(
@@ -209,7 +236,7 @@ pub async fn command_ans(
         }
         Err(err) => format!(
             "データベースでエラーが発生しました (`/quiz ygo new` は実行しましたか？) : {}",
-            err.to_string()
+            err
         ),
     };
 
@@ -230,7 +257,7 @@ pub async fn command_giveup(
         }
         Err(err) => format!(
             "データベースでエラーが発生しました (`/quiz new` は実行しましたか？) : {}",
-            err.to_string()
+            err
         ),
     };
 
