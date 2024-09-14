@@ -18,11 +18,18 @@ use crate::ygo::db::{get_quiz, new_quiz};
 
 pub(crate) fn create_subcommand(c: CreateCommandOption) -> CreateCommandOption {
     c.description("Communicate with Yu-gi-oh! quiz bot")
-        .add_sub_option(CreateCommandOption::new(
-            serenity::all::CommandOptionType::SubCommand,
-            "new",
-            "Start Yu-gi-oh! quiz",
-        ))
+        .add_sub_option(
+            CreateCommandOption::new(
+                serenity::all::CommandOptionType::SubCommand,
+                "new",
+                "Start Yu-gi-oh! quiz",
+            )
+            .add_sub_option(CreateCommandOption::new(
+                serenity::all::CommandOptionType::String,
+                "fname",
+                "If specified, only cards with it in the card name will be asked",
+            )),
+        )
 }
 
 pub(crate) async fn receive_command(bot: &Bot, ctx: &Context, command: CommandInteraction) {
@@ -35,7 +42,20 @@ pub(crate) async fn receive_command(bot: &Bot, ctx: &Context, command: CommandIn
 
     let subc = after_ygo[0].name.as_str();
     let result = match subc {
-        "new" => command_new(bot, ctx, &command).await,
+        "new" => {
+            info!("{:?}", after_ygo[0].value);
+            let CommandDataOptionValue::SubCommand(ref params) = after_ygo[0].value else {
+                //unreachable
+                panic!()
+            };
+            let fname = if !params.is_empty() {
+                params[0].value.as_str()
+            } else {
+                None
+            };
+            info!(fname);
+            command_new(bot, ctx, &command, fname).await
+        }
         _ => Err(format!("Unknown Command: {}", subc)),
     };
 
@@ -76,16 +96,32 @@ async fn command_new(
     bot: &Bot,
     _: &Context,
     command: &CommandInteraction,
+    op_fname: Option<&str>,
 ) -> Result<(String, Vec<CreateAttachment>), String> {
+    let client = reqwest::Client::new();
+
+    let mut query = vec![
+        ("num", "1"),
+        ("offset", "0"),
+        ("sort", "random"),
+        ("cachebust", ""),
+        ("misc", "yes"),
+    ];
+
+    if let Some(fname) = op_fname {
+        query.push(("fname", fname));
+    }
+
     let card: serde_json::Value = serde_json::from_str::<serde_json::Value>(
-        &reqwest::get(
-            "https://db.ygoprodeck.com/api/v7/cardinfo.php?num=1&offset=0&sort=random&cachebust&misc=yes",
-        )
-        .await
-        .map_err(|e| e.to_string())?
-        .text()
-        .await
-        .map_err(|e| e.to_string())?,
+        &client
+            .get("https://db.ygoprodeck.com/api/v7/cardinfo.php")
+            .query(&query)
+            .send()
+            .await
+            .map_err(|e| e.to_string())?
+            .text()
+            .await
+            .map_err(|e| e.to_string())?,
     )
     .map_err(|e| e.to_string())?
     .get("data")
@@ -187,7 +223,12 @@ async fn command_new(
         Ok(msg) => {
             info!("{}", msg);
             format!(
-                "次のカードテキストを持つ遊戯王カードは？(`/quiz ans` で回答)\n\n{}",
+                "{}次のカードテキストを持つ遊戯王カードは？(`/quiz ans` で回答)\n\n{}",
+                if let Some(fname) = op_fname {
+                    format!("カード名に「{}」が含まれている、", fname)
+                } else {
+                    "".to_owned()
+                },
                 card_text
             )
         }
