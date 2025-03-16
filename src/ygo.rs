@@ -92,6 +92,37 @@ pub(crate) async fn receive_command(bot: &Bot, ctx: &Context, command: CommandIn
     }
 }
 
+fn extract_text_from_document(
+    document: &scraper::Html,
+    selector: &scraper::Selector,
+    card_name: &str,
+) -> String {
+    let card_text: String = document
+        .select(selector)
+        .map(|t| t.inner_html())
+        .collect::<Vec<_>>()
+        .join("")
+        .split('\n')
+        .filter_map(|card_line: &str| {
+            if card_line.contains("<div class=\"text_title\">") {
+                None
+            } else if card_line.contains("</div>") {
+                None
+            } else if card_line.trim() == "" {
+                None
+            } else {
+                Some(card_line.trim())
+            }
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+        .replace("<br>", "\n")
+        .replace(card_name, "<カード名>")
+        .to_string();
+
+    card_text
+}
+
 async fn command_new(
     bot: &Bot,
     _: &Context,
@@ -169,31 +200,37 @@ async fn command_new(
             .collect::<Vec<_>>();
         let card_name: String = card_names[2].trim().to_string();
         let card_name_ruby: String = card_names[1].trim().to_string();
-        let text_selector = scraper::Selector::parse("#CardTextSet:nth-child(2) .item_box_text")
+
+        // まずペンデュラムかどうかを判定
+        let type_selector = scraper::Selector::parse("#CardSet > div.top > div:nth-child(3) > div:nth-child(3) > div > p")        
             .map_err(|e| e.to_string())?;
-        let card_text: String = document
-            .select(&text_selector)
-            .map(|t| t.inner_html())
-            .collect::<Vec<_>>()
-            .join("")
-            .split('\n')
-            .filter_map(|card_line: &str| {
-                if card_line.contains("<div class=\"text_title\">") {
-                    None
-                } else if card_line.contains("</div>") {
-                    None
-                } else if card_line.trim() == "" {
-                    None
-                } else {
-                    Some(card_line.trim())
-                }
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-            .replace("<br>", "\n")
-            .replace(&card_name, "<カード名>")
-            .to_string();
-        Ok((card_name, card_name_ruby, card_text))
+        let card_type = document.select(&type_selector).next().ok_or("遊戯王DBの解析失敗")?.text().collect::<Vec<_>>()[0];
+        let is_pendulum = card_type.contains("ペンデュラム");
+
+        let (card_text_pen, card_text) =
+            if is_pendulum {
+                let pen_selector = scraper::Selector::parse("#CardSet > div.top > div:nth-child(4) > div:nth-child(4) > div")
+                    .map_err(|e| e.to_string())?;
+                let text_selector = scraper::Selector::parse("#CardSet > div.top > div:nth-child(5) > div")
+                    .map_err(|e| e.to_string())?;
+                (extract_text_from_document(&document, &pen_selector, &card_name), 
+                    extract_text_from_document(&document, &text_selector, &card_name))
+            } else {
+                let text_selector = scraper::Selector::parse("#CardSet > div.top > div:nth-child(4) > div")
+                    .map_err(|e| e.to_string())?;
+                ("".to_owned(), extract_text_from_document(&document, &text_selector, &card_name))
+            };
+
+        let concatted = format!("{}{}", 
+            if card_text_pen.is_empty() {
+                "".to_owned()
+            }else {
+                format!("ペンデュラム効果:\n{}\n", card_text_pen)
+            }, 
+            card_text
+        );
+
+        Ok((card_name, card_name_ruby, concatted))
     };
 
     let (card_name, card_name_ruby, card_text) = x()?;
