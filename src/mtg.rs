@@ -1,5 +1,7 @@
 pub mod db;
 
+use std::collections::HashMap;
+
 use reqwest::Client;
 use serde_json::json;
 use serenity::{
@@ -33,7 +35,12 @@ pub(crate) fn create_subcommand(c: CreateCommandOption) -> CreateCommandOption {
                 .add_string_choice("モダン", "modern")
                 .add_string_choice("エターナル", "eternal")
                 .required(true),
-            ),
+            )
+            .add_sub_option(CreateCommandOption::new(
+                serenity::all::CommandOptionType::Boolean,
+                "rare",
+                "If true, only rare cards will be selected",
+            )),
         )
 }
 
@@ -46,7 +53,7 @@ pub(crate) async fn receive_command(bot: &Bot, ctx: &Context, command: CommandIn
 
     info!(subc);
     let result = match subc {
-        "new" => command_new(&bot, &ctx, &command, &after_mtg[0]).await,
+        "new" => command_new(bot, ctx, &command, &after_mtg[0]).await,
         _ => Err(format!("Unknown Command: {}", subc)),
     };
 
@@ -79,15 +86,36 @@ async fn command_new(
         //unreachable
         panic!()
     };
-    let format = subopt[0].value.as_str().unwrap();
-    info!("format = {}", format);
+    let mut cmd_arg_map = HashMap::new();
+    for opt in subopt {
+        cmd_arg_map.insert(opt.name.as_str(), &opt.value);
+    }
 
-    let query = match format {
-        "standard" => "lang:japanese, f:standard",
-        "pioneer" => "lang:japanese, f:pioneer",
-        "modern" => "lang:japanese, f:modern",
-        "eternal" | _ => "lang:japanese",
-    };
+    let format = cmd_arg_map
+        .get("format")
+        .map(|res| res.as_str().unwrap())
+        .unwrap_or("");
+    info!("format = {}", format);
+    let rare_mode = cmd_arg_map
+        .get("rare")
+        .map(|res| res.as_bool().unwrap())
+        .unwrap_or(false);
+    info!("rare_mode = {}", rare_mode);
+
+    let query = [
+        "lang:japanese",
+        match format {
+            "standard" => "f:standard",
+            "pioneer" => "f:pioneer",
+            "modern" => "f:modern",
+            "eternal" | _ => "",
+        },
+        if rare_mode { "r>=r" } else { "" },
+    ]
+    .into_iter()
+    .filter(|o| !o.is_empty())
+    .collect::<Vec<_>>()
+    .join(" ");
 
     let client = Client::new();
 
